@@ -30,14 +30,11 @@
     },
     "Docker": {
       "commandName": "Docker",
-      "launchBrowser": true,
-      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}/swagger",
+      "launchBrowser": false,
+      "launchUrl": "swagger",
       "environmentVariables": {
-        "ASPNETCORE_HTTPS_PORTS": "5001",
-        "ASPNETCORE_HTTP_PORTS": "5000"
-      },
-      "publishAllPorts": true,
-      "useSSL": true
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   },
   "$schema": "https://json.schemastore.org/launchsettings.json",
