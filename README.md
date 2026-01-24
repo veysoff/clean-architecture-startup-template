@@ -36,6 +36,9 @@ Built with strict separation of concerns, explicit error handling via the Result
 ### Production-Ready Infrastructure
 - **Database:** Entity Framework Core with PostgreSQL and automatic migrations
 - **Authentication & Authorization:** JWT token support with custom permission-based authorization (`HasPermissionAttribute`)
+- **Distributed Caching:** Redis integration via `StackExchange.Redis` with automatic query caching decorator
+- **Rate Limiting:** Built-in ASP.NET Core rate limiting with configurable policies (5 req/min for auth, 1000 req/hour for users)
+- **API Versioning:** URL-based versioning (`/v1/...`) with backward compatibility support
 - **Health Checks:** Built-in health check endpoints with UI client integration
 - **API Documentation:** Swagger/OpenAPI endpoints with auto-generated documentation
 
@@ -276,10 +279,18 @@ clean-architecture-startup-template/
 │   ├── ArchitectureTests/               # Architectural rule enforcement
 │   │   └── *.cs
 │   │
-│   └── [future] Application.UnitTests/  # Unit tests for handlers, validators
-│       └── Todos/
-│           └── Create/
-│               └── CreateTodoCommandHandlerTests.cs
+│   └── Application.UnitTests/           # Unit tests for handlers, validators, decorators
+│       ├── Behaviors/
+│       │   └── QueryCachingDecoratorTests.cs
+│       ├── Todos/
+│       │   └── Create/
+│       │       ├── CreateTodoCommandHandlerTests.cs
+│       │       └── CreateTodoCommandValidatorTests.cs
+│       └── Users/
+│           ├── Login/
+│           │   └── LoginUserCommandHandlerTests.cs
+│           └── Register/
+│               └── RegisterUserCommandValidatorTests.cs
 │
 ├── .github/
 │   └── workflows/                       # CI/CD pipelines
@@ -312,6 +323,9 @@ clean-architecture-startup-template/
 | **API Docs** | Swagger/OpenAPI | Auto-generated endpoint documentation |
 | **DI Container** | Microsoft.Extensions.DependencyInjection | Built-in, lightweight DI |
 | **Scrutor** | Convention-based service registration | Auto-registration of handlers and validators |
+| **Caching** | StackExchange.Redis | Distributed caching with automatic query caching |
+| **Rate Limiting** | ASP.NET Core Rate Limiting | Built-in rate limiting with multiple policies |
+| **API Versioning** | Asp.Versioning.Http | URL-based API versioning support |
 
 ---
 
@@ -322,10 +336,11 @@ clean-architecture-startup-template/
 ```json
 {
   "ConnectionStrings": {
-    "Default": "Host=localhost;Database=clean_architecture;Username=postgres;Password=password"
+    "Database": "Host=localhost;Database=clean_architecture;Username=postgres;Password=password",
+    "Redis": "localhost:6379"
   },
   "Jwt": {
-    "SecretKey": "your-secret-key-min-32-chars-required",
+    "Secret": "your-secret-key-min-32-chars-required",
     "Issuer": "YourIssuer",
     "Audience": "YourAudience",
     "ExpirationMinutes": 60
@@ -338,11 +353,9 @@ clean-architecture-startup-template/
         "Args": { "theme": "Ansi" }
       },
       {
-        "Name": "File",
+        "Name": "Seq",
         "Args": {
-          "path": "logs/app-.txt",
-          "rollingInterval": "Day",
-          "retainedFileCountLimit": 7
+          "serverUrl": "http://localhost:5341"
         }
       }
     ]

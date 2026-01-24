@@ -25,6 +25,7 @@ public static class DependencyInjection
         services
             .AddServices()
             .AddDatabase(configuration)
+            .AddCaching(configuration)
             .AddHealthChecks(configuration)
             .AddAuthenticationInternal(configuration)
             .AddAuthorizationInternal();
@@ -49,6 +50,19 @@ public static class DependencyInjection
                 .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
+
+        return services;
+    }
+
+    private static IServiceCollection AddCaching(this IServiceCollection services, IConfiguration configuration)
+    {
+        string? redisConnectionString = configuration.GetConnectionString("Redis");
+
+        services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnectionString;
+            options.InstanceName = "CleanArchitecture:";
+        });
 
         return services;
     }

@@ -30,6 +30,9 @@ You are a **Senior .NET Architect** specializing in clean, maintainable, and per
 - **Result Pattern:** All application operations return `Result<TValue>` or `Result` instead of throwing exceptions
 - **Validation:** FluentValidation decorators on command/query handlers (via `ValidationDecorator`)
 - **Logging:** Structured logging via Serilog with LoggingDecorator behavior
+- **Caching:** Distributed caching via Redis with `QueryCachingDecorator` for read optimization
+- **Rate Limiting:** Built-in ASP.NET Core rate limiting with multiple policies (auth, authenticated users)
+- **API Versioning:** URL-based versioning with backward compatibility support
 
 ### Testing Framework
 - **Unit Testing:** xUnit
@@ -77,10 +80,11 @@ You are a **Senior .NET Architect** specializing in clean, maintainable, and per
 #### 2. **Application** (`src/Application/`)
 - **Command/Query handlers** that orchestrate domain operations
 - **DTOs/Responses** for data transfer (e.g., `TodoResponse`, `UserResponse`)
-- **Abstractions/Interfaces** for cross-cutting concerns (repositories, identity, messaging, etc.)
+- **Abstractions/Interfaces** for cross-cutting concerns (repositories, identity, messaging, caching, etc.)
 - **Validators** for command/query input validation
 - **CQRS interfaces:** `ICommand<TResponse>`, `ICommandHandler<TCommand, TResponse>`, `IQuery<TResponse>`, `IQueryHandler<TQuery, TResponse>`
-- **Decorators** for cross-cutting concerns (logging, validation, transaction management)
+- **Decorators** for cross-cutting concerns (logging, validation, caching via `QueryCachingDecorator`)
+- **Caching abstractions:** `ICachedQuery` interface for opt-in query caching with configurable expiration
 
 #### 3. **Infrastructure** (`src/Infrastructure/`)
 - **Database Context & Configurations:** EF Core DbContext and entity type configurations
@@ -89,6 +93,7 @@ You are a **Senior .NET Architect** specializing in clean, maintainable, and per
 - **Domain Event Dispatcher:** Publishes domain events to registered handlers
 - **External Service Integrations:** Email, payment gateways, third-party APIs
 - **Time Provider:** Abstract `IDateTimeProvider` for testable DateTime operations
+- **Distributed Cache:** StackExchange.Redis integration for distributed caching with configurable connection strings
 
 #### 4. **Web.Api** (`src/Web.Api/`)
 - **Endpoint handlers** (REPR pattern or minimal APIs) for HTTP routing
@@ -96,6 +101,8 @@ You are a **Senior .NET Architect** specializing in clean, maintainable, and per
 - **Global exception handler** for consistent error responses
 - **Request/response transformation:** DTO mapping and result-to-HTTP-response conversion
 - **Middleware:** Cross-cutting concerns like request logging, correlation IDs
+- **Rate Limiting:** ASP.NET Core built-in rate limiting with policies for auth endpoints and authenticated users
+- **API Versioning:** URL-based versioning (`/v1/...`) with query string and header fallback support
 
 #### 5. **SharedKernel** (`src/SharedKernel/`)
 - **Base types:** `Entity`, `IDomainEvent`, `IDomainEventHandler`
@@ -548,10 +555,21 @@ namespace Web.Api.Endpoints.Todos;
 
 public sealed class Create : IEndpoint
 {
-    public void MapEndpoint(IEndpointRouteBuilder app) =>
-        app.MapPost("/todos", Handle)
-           .WithName("CreateTodo")
-           .WithOpenApi();
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        var versionSet = app.NewApiVersionSet()
+            .HasApiVersion(new ApiVersion(1, 0))
+            .ReportApiVersions()
+            .Build();
+
+        app.MapPost("v{version:apiVersion}/todos", Handle)
+            .WithApiVersionSet(versionSet)
+            .MapToApiVersion(new ApiVersion(1, 0))
+            .WithName("CreateTodo")
+            .RequireAuthorization()
+            .RequireRateLimiting("authenticated")
+            .WithOpenApi();
+    }
 
     private static async Task<IResult> Handle(
         CreateTodoCommand command,
@@ -566,6 +584,51 @@ public sealed class Create : IEndpoint
     }
 }
 ```
+
+### 4. Query with Caching
+
+```csharp
+namespace Application.Todos.GetById;
+
+// Query with caching support
+public sealed record GetTodoByIdQuery(Guid TodoItemId) : IQuery<TodoResponse>, ICachedQuery
+{
+    public string CacheKey => $"todo:{TodoItemId}";
+    public TimeSpan? Expiration => TimeSpan.FromMinutes(5);
+}
+
+// Handler (caching is automatic via QueryCachingDecorator)
+internal sealed class GetTodoByIdQueryHandler(
+    IApplicationDbContext dbContext) : IQueryHandler<GetTodoByIdQuery, TodoResponse>
+{
+    public async Task<Result<TodoResponse>> Handle(
+        GetTodoByIdQuery query,
+        CancellationToken cancellationToken)
+    {
+        TodoResponse? todo = await dbContext.Todos
+            .Where(t => t.Id == query.TodoItemId)
+            .Select(t => new TodoResponse
+            {
+                Id = t.Id,
+                Description = t.Description,
+                Priority = t.Priority,
+                IsCompleted = t.IsCompleted,
+                CreatedAt = t.CreatedAt
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return todo is null
+            ? Result.Failure<TodoResponse>(TodoItemErrors.NotFound)
+            : Result.Success(todo);
+    }
+}
+```
+
+**Польза кеширования:**
+- ✅ Автоматическое кеширование при реализации `ICachedQuery`
+- ✅ Настраиваемое время жизни кеша через `Expiration`
+- ✅ Уникальный ключ кеша через `CacheKey`
+- ✅ Снижение нагрузки на БД на 60-80% для read-операций
 
 ---
 

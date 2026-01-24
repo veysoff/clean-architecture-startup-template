@@ -12,7 +12,12 @@ internal sealed class Login : IEndpoint
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("users/login", async (
+        var versionSet = app.NewApiVersionSet()
+            .HasApiVersion(new Asp.Versioning.ApiVersion(1, 0))
+            .ReportApiVersions()
+            .Build();
+
+        app.MapPost("v{version:apiVersion}/users/login", async (
             Request request,
             ICommandHandler<LoginUserCommand, string> handler,
             CancellationToken cancellationToken) =>
@@ -23,6 +28,9 @@ internal sealed class Login : IEndpoint
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })
-        .WithTags(Tags.Users);
+        .WithApiVersionSet(versionSet)
+        .MapToApiVersion(new Asp.Versioning.ApiVersion(1, 0))
+        .WithTags(Tags.Users)
+        .RequireRateLimiting("auth");
     }
 }
