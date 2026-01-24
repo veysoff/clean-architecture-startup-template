@@ -10,7 +10,12 @@ internal sealed class Complete : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPut("todos/{id:guid}/complete", async (
+        var versionSet = app.NewApiVersionSet()
+            .HasApiVersion(new Asp.Versioning.ApiVersion(1, 0))
+            .ReportApiVersions()
+            .Build();
+
+        app.MapPut("v{version:apiVersion}/todos/{id:guid}/complete", async (
             Guid id,
             ICommandHandler<CompleteTodoCommand> handler,
             CancellationToken cancellationToken) =>
@@ -21,7 +26,10 @@ internal sealed class Complete : IEndpoint
 
             return result.Match(Results.NoContent, CustomResults.Problem);
         })
+        .WithApiVersionSet(versionSet)
+        .MapToApiVersion(new Asp.Versioning.ApiVersion(1, 0))
         .WithTags(Tags.Todos)
-        .RequireAuthorization();
+        .RequireAuthorization()
+        .RequireRateLimiting("authenticated");
     }
 }

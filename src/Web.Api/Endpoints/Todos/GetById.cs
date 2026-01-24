@@ -10,7 +10,12 @@ internal sealed class GetById : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("todos/{id:guid}", async (
+        var versionSet = app.NewApiVersionSet()
+            .HasApiVersion(new Asp.Versioning.ApiVersion(1, 0))
+            .ReportApiVersions()
+            .Build();
+
+        app.MapGet("v{version:apiVersion}/todos/{id:guid}", async (
             Guid id,
             IQueryHandler<GetTodoByIdQuery, TodoResponse> handler,
             CancellationToken cancellationToken) =>
@@ -21,7 +26,10 @@ internal sealed class GetById : IEndpoint
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })
+        .WithApiVersionSet(versionSet)
+        .MapToApiVersion(new Asp.Versioning.ApiVersion(1, 0))
         .WithTags(Tags.Todos)
-        .RequireAuthorization();
+        .RequireAuthorization()
+        .RequireRateLimiting("authenticated");
     }
 }

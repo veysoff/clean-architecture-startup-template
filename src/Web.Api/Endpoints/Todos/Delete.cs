@@ -10,7 +10,12 @@ internal sealed class Delete : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapDelete("todos/{id:guid}", async (
+        var versionSet = app.NewApiVersionSet()
+            .HasApiVersion(new Asp.Versioning.ApiVersion(1, 0))
+            .ReportApiVersions()
+            .Build();
+
+        app.MapDelete("v{version:apiVersion}/todos/{id:guid}", async (
             Guid id,
             ICommandHandler<DeleteTodoCommand> handler,
             CancellationToken cancellationToken) =>
@@ -21,7 +26,10 @@ internal sealed class Delete : IEndpoint
 
             return result.Match(Results.NoContent, CustomResults.Problem);
         })
+        .WithApiVersionSet(versionSet)
+        .MapToApiVersion(new Asp.Versioning.ApiVersion(1, 0))
         .WithTags(Tags.Todos)
-        .RequireAuthorization();
+        .RequireAuthorization()
+        .RequireRateLimiting("authenticated");
     }
 }
